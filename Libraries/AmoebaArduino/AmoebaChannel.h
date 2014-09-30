@@ -1,3 +1,5 @@
+#ifndef AMOEBAARDUINO
+#define AMOEBAARDUINO
 
 class AmoebaChannel
 {
@@ -19,5 +21,7 @@ class AmoebaChannel
 		void getValue(float value);
 		void getError(float error);
 		
-		virtual controlParameter();
+		virtual const char* controlParameter();
 }
+
+#endif

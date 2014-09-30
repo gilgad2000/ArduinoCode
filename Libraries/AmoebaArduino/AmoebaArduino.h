@@ -19,6 +19,9 @@
 //   Used to return requested data from a sensor.
 #define DATA_PACKET 'D'
 
+//  Used to being an experiment.
+#define BEGIN_EXPERIMENT 'b'
+
 #define SUCCESS 0
 
 class AmoebaController
@@ -27,10 +30,11 @@ class AmoebaController
 		//   Data read off CAN Bus.
 		unsigned char buffer[8];
 		//   This property is true if the experiment is running.
-		boolean running;
+		bool running;
 		//   This property is the channels.
-		Vector<AmoebaChannel> channels;
-		
+		//Vector <AmoebaChannel> channels;
+		//Vector <int> channels;
+
 		//   These methods handle the receiving of messages.
 		//   Read the message buffer.
 		int readBuffer();

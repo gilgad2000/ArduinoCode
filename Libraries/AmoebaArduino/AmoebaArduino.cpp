@@ -1,6 +1,8 @@
+#ifndef AMOEBAARDUINO
+#define AMOEBAARDUINO
 #include "AmoebaArduino.h"
-#include <SPI.h>
-#include "mcp_can.h"
+//#include <SPI.h>
+//#include "mcp_can.h"
 #include "ArduinoVector.h"
 
 //   These methods handle the receiving of messages.
@@ -86,3 +88,5 @@ int AmoebaController::run()
 {
 	return SUCCESS;
 }
+
+#endif
