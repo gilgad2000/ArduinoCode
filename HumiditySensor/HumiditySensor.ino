@@ -1,5 +1,6 @@
 // demo: CAN-BUS Shield, receive data
 #include "mcp_can.h"
+#include <EEPROM.h>
 #include <SPI.h>
 #include <stdio.h>
 #include <string.h>
@@ -10,6 +11,8 @@
 #define NUM_CHANNELS 2
 #define RESET_PIN 9
 #define INT_PIN 2
+
+#define NUMCALS 6
 
 //   Used to request Data from a sensor
 #define DATA_REQUEST  'R'
@@ -29,8 +32,20 @@
 //   Used to return requested data from a sensor.
 #define DATA_PACKET 'D'
 
+//  Request calibration
+#define REQUEST_CALIBRATION 'a'
+
+#define REMOTE_CALIBRATION 'A'
+
+//  Returned Calibration
+#define RETURNED_CALIBRATION 'r'
+
 //  Used to being an experiment.
 #define EXPERIMENT_CONTROL_PACKET 'b'
+
+#define SIZEOFFLOAT 4
+
+float calibration[NUMCALS];
 
 typedef struct instrument
 {
@@ -38,6 +53,7 @@ typedef struct instrument
   INT8U buf[8];
   INT8U sendbuf[8];
   INT8U i;
+  INT8U j;
 };
 
 instrument inst;
@@ -50,8 +66,14 @@ float readingToHumidity(float reading);
 
 float readingToTempterature(float reading);
 
+void requestCalibration(unsigned char* buf);
+
+void calibrate(unsigned char* buf);
+
 void setup()
 { 
+  unsigned char tmp[SIZEOFFLOAT];
+  
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, LOW);
   delay(20); 
@@ -80,6 +102,16 @@ void setup()
     inst.buf[inst.i]=0;
   }
   
+  //  Retrieve calibration from EEPROM.
+  for(inst.i=0;inst.i!=NUMCALS;inst.i++)
+  {
+    for(inst.j=0;inst.j!=SIZEOFFLOAT;inst.j++)
+    {
+       tmp[inst.j] = EEPROM.read((inst.i*SIZEOFFLOAT)+inst.j);
+    }
+    memcpy((char*)&calibration[inst.i],(char*)&tmp[0],sizeof(float));
+  }  
+  
 }
 
 void loop()
@@ -91,13 +123,16 @@ void loop()
      CAN.readMsgBuf(&inst.len, inst.buf);
      if(inst.buf[0]==DATA_REQUEST)
         request();
+     if(inst.buf[0]==REMOTE_CALIBRATION)
+        calibrate(inst.buf);
+     if(inst.buf[0]==REQUEST_CALIBRATION)
+        requestCalibration(inst.buf);
      //  Clear the received message.
      for(inst.i=0;inst.i!=inst.len;inst.i++)
         inst.buf[inst.i]=0;
      //  Reset interrupts.
      CAN.clearRX0Status();
      CAN.clearRX1Status();
-     delay(4);
    }
 }
 
@@ -116,16 +151,17 @@ void request()
 
 float readFromChannel(unsigned char num)
 {
-  float reading;
+  float reading = 0;
   switch(num)
   {
     case 0:
-      reading = (float)analogRead(A0);
-      reading = readingToHumidity(reading);
+      reading = readingToHumidity((float)analogRead(A0));
       break;
     case 1:
-      reading = (float)analogRead(A1);
-      reading = readingToTempterature(reading);
+      reading = readingToTempterature((float)analogRead(A1));
+      break;
+    default:
+      reading = 1024;
       break;
   }
   return reading;
@@ -133,12 +169,37 @@ float readFromChannel(unsigned char num)
 
 float readingToHumidity(float reading)
 {
-  //reading = -0.00007*reading*reading + 0.1917*reading - 31.622;
+  reading = calibration[2]*reading*reading + calibration[1]*reading + calibration[0];
   return reading;
 }
 
 float readingToTempterature(float reading)
 {
-  //reading = 0.193*reading - 71.447;
+  reading = calibration[5]*reading*reading + calibration[4]*reading + calibration[3];
   return reading;
+}
+
+//  This should allow for remote recalibration of modules.  Once calibrated the data is stored in the EEPROM and retrieved on start up.
+void calibrate(unsigned char* buf)
+{
+    memcpy((float*)&calibration[buf[1]],(float*)&buf[2],SIZEOFFLOAT);
+    for(inst.i=0;inst.i!=SIZEOFFLOAT;inst.i++)
+    {
+      EEPROM.write((buf[1]*SIZEOFFLOAT)+inst.i,buf[2+inst.i]);
+    }
+}
+
+void requestCalibration(unsigned char* buf)
+{
+    unsigned char tmp[SIZEOFFLOAT];
+    for(inst.j=0;inst.j!=SIZEOFFLOAT;inst.j++)
+    {
+       //  The 3 because the calibration starts in the 3rd byte of the send packet.
+       inst.sendbuf[3+inst.j] = EEPROM.read(buf[1]*SIZEOFFLOAT+inst.j);
+    }
+    inst.sendbuf[0] = RETURNED_CALIBRATION;
+    inst.sendbuf[1] = DEVICE_ADDRESS;
+    inst.sendbuf[2] = buf[1];
+    memcpy((char*)&inst.sendbuf[3],(char*)&calibration[buf[1]],sizeof(float));
+    CAN.sendMsgBuf(buf[2],0,8,inst.sendbuf);
 }
